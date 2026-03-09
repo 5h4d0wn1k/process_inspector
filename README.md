@@ -1,14 +1,32 @@
-# Process Inspector
+<div align="center">
+  
+# 🕵️‍♂️ Process Inspector
 
 **A lightweight, educational tool to demystify Linux processes, the `/proc` filesystem, and File Descriptors (FDs).**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Language-Bash-green.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-Linux-blue.svg)]()
+[![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-## 🔍 Overview
+</div>
 
-The **Process Inspector** is a minimalist Bash script designed to look under the hood of any running Linux process. Instead of just relying on tools like `ps`, `top`, or `htop`, this tool directly queries the kernel's virtual `/proc` filesystem to expose the raw reality of how processes are managed.
+---
+
+## � Table of Contents
+- [Overview](#-overview)
+- [Why This Matters for Security](#-why-this-matters-for-security)
+- [Installation & Usage](#-installation--usage)
+- [How it Works Under the Hood](#-how-it-works-under-the-hood)
+- [Future Roadmap](#-future-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
+
+## �🔍 Overview
+
+The **Process Inspector** is a minimalist Bash script designed to look under the hood of any running Linux process. Instead of just relying on dashboards like `ps`, `top`, or `htop`, this tool directly queries the kernel's virtual `/proc` filesystem to expose the raw reality of how processes interact with the system.
 
 It walks the `/proc/[PID]/` directory and reveals:
 - **Command Line:** The exact command and arguments used to start the process.
@@ -19,19 +37,21 @@ This project is built for **cybersecurity enthusiasts, system administrators, an
 
 ---
 
-## 🚀 Why This Matters for Security
+## �️ Why This Matters for Security
 
 *"I could use Linux. But I couldn't defend or break it with confidence."*
 
 If you want to build systems that survive real-world attacks—or if you want to find vulnerabilities in them—you cannot afford a shallow understanding of the OS they run on. 
 
-Understanding how the kernel exposes information via `/proc` helps you bridge the gap between "script-kiddie" usage and true systems comprehension:
+Understanding how the kernel exposes information via `/proc` helps bridge the gap between basic usage and true systems comprehension:
 
 1. **Processes as Open Files:** A process isn't just a running program; it's a PID attached to memory, parent processes, and numbered handles (File Descriptors) pointing to actual system resources.
 2. **Symlinks as the Explanation Layer:** Seeing `FD 0 -> /dev/pts/1` in `/proc/<pid>/fd/` shows you exactly how standard input is wired to a physical or pseudo-terminal. This is the exact mechanism tools like `lsof` use under the hood.
-3. **Paths and Permissions:** Understanding absolute vs. relative paths and integer-based file permissions (like `chmod 644` vs `700`) is what makes or breaks path traversal bugs and security misconfigurations.
+3. **Paths and Permissions:** Understanding absolute vs. relative paths makes or breaks path traversal bugs and security misconfigurations.
 
-By inspecting these elements manually, you learn to reason about how malware hides, how rootkits lie, and how defenders can detect them. Chains like `nginx → bash → curl → bash` stop looking like noise and start looking like maps worth investigating.
+By inspecting these elements manually, you learn to reason about how malware hides, how rootkits lie, and how defenders can detect them. 
+
+---
 
 ## 🛠️ Installation & Usage
 
@@ -40,13 +60,13 @@ By inspecting these elements manually, you learn to reason about how malware hid
 - `bash` installed.
 - Root (`sudo`) privileges are recommended when inspecting processes not owned by your user.
 
-### Clone the Repository
+### 1. Clone the Repository
 ```bash
-git clone https://github.com/YOUR_USERNAME_HERE/process_inspector.git
+git clone https://github.com/5h4d0wn1k/process_inspector.git
 cd process_inspector
 ```
 
-### Run the Inspector
+### 2. Run the Inspector
 Make sure the script is executable:
 ```bash
 chmod +x inspector.sh
@@ -57,36 +77,58 @@ Execute it by passing a Process ID (PID):
 # Inspect your current shell
 ./inspector.sh $$
 
-# Inspect a specific service (requires sudo if owned by another user, e.g., root)
+# Inspect a specific service (requires sudo if owned by another user)
 sudo ./inspector.sh $(pidof sshd | awk '{print $1}')
 ```
 
-### Example Output
+### 🖥️ Example Output
+
 ```text
 ==========================================
-      Process Inspector (PID: 12345)
+      Process Inspector (PID: 1198623)
 ==========================================
-Command              : /usr/bin/bash
+Command              : /usr/bin/bash 
 CWD                  : /home/user/projects/process_inspector
 
 --- Open File Descriptors ---
-  FD 0    -> /dev/pts/1
-  FD 1    -> /dev/pts/1
-  FD 2    -> /dev/pts/1
-  FD 255  -> /dev/pts/1
+  FD 0    -> /dev/pts/0
+  FD 1    -> /dev/pts/0
+  FD 2    -> /dev/pts/0
+  FD 36   -> anon_inode:inotify
+  FD 37   -> socket:[1270741]
 ==========================================
 ```
+
+---
+
+## ⚙️ How it Works Under the Hood
+
+The script avoids complex dependencies. It relies entirely on `/proc`:
+*   `cmdline`: Reads `/proc/[PID]/cmdline`. To handle null-byte separators, it translates them to spaces.
+*   `cwd`: Executes `readlink /proc/[PID]/cwd`.
+*   `fd`: Loops through `/proc/[PID]/fd/*` and uses `readlink` to resolve exactly where each numbered descriptor points.
+
+---
 
 ## 🌱 Future Roadmap
 
 This tool represents the beginning of a deep-dive journey into Linux internals. Future planned features include:
-- Inspecting memory maps (`/proc/[PID]/maps`).
-- Dumping process environment variables securely (`/proc/[PID]/environ`).
-- Tracing live system calls.
-- Parent and child process tree visualizations.
+- [ ] Inspecting memory maps (`/proc/[PID]/maps`).
+- [ ] Dumping process environment variables securely (`/proc/[PID]/environ`).
+- [ ] Tracing live system calls.
+- [ ] Parent and child process tree visualizations.
+
+---
 
 ## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](). If you are learning Linux internals too, fork the repo and experiment.
+
+We welcome contributions from everyone, whether you are a Linux veteran or just starting to learn about the `/proc` filesystem!
+
+Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
+
+---
 
 ## 📜 License
-This project is licensed under the MIT License.
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+

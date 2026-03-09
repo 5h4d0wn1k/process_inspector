@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 
-# Process Inspector
-# A tool to walk /proc and display command, cwd, and open FDs for a given PID.
-# Built for learning and demystifying Linux processes.
+# ==============================================================================
+#  ____                               ___                           _             
+# |  _ \ _ __ ___   ___ ___  ___ ___ |_ _|_ __  ___ _ __   ___  ___| |_ ___  _ __ 
+# | |_) | '__/ _ \ / __/ _ \/ __/ __| | || '_ \/ __| '_ \ / _ \/ __| __/ _ \| '__|
+# |  __/| | | (_) | (_|  __/\__ \__ \ | || | | \__ \ |_) |  __/ (__| || (_) | |   
+# |_|   |_|  \___/ \___\___||___/___/|___|_| |_|___/ .__/ \___|\___|\__\___/|_|   
+#                                                  |_|                            
+#                                                                           
+# A lightweight, educational tool to demystify Linux processes, the /proc 
+# filesystem, and exactly how everything maps to File Descriptors under the hood.
+# 
+# Author   : Process Inspector Contributors
+# License  : MIT
+# Version  : 1.0.0
+# GitHub   : https://github.com/5h4d0wn1k/process_inspector
+# ==============================================================================
 
 # --- ANSI Colors ---
 RED='\033[0;31m'
