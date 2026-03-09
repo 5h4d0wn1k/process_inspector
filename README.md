@@ -1,134 +1,197 @@
-<div align="center">
-  
-# 🕵️‍♂️ Process Inspector
+# Process Inspector
 
-**A lightweight, educational tool to demystify Linux processes, the `/proc` filesystem, and File Descriptors (FDs).**
+`Process Inspector` is a Linux-focused Bash tool that walks `/proc/<pid>` and shows what a process looks like from the kernel's point of view.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Bash](https://img.shields.io/badge/Language-Bash-green.svg)]()
-[![Platform](https://img.shields.io/badge/Platform-Linux-blue.svg)]()
-[![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](CONTRIBUTING.md)
+Today, it focuses on the layer I am actively learning and rebuilding in public:
 
-</div>
+- process identity through `PID`, `PPID`, and state
+- command lines from `/proc/<pid>/cmdline`
+- current working directories from `/proc/<pid>/cwd`
+- open file descriptors from `/proc/<pid>/fd`
+- the difference between terminals, files, pipes, sockets, devices, and kernel-managed descriptors
 
----
+This repository is intentionally small. It is not trying to be a replacement for `ps`, `lsof`, or `strace`. It is a first cybersecurity mini-project built to make Linux process internals legible before adding more advanced features over time.
 
-## � Table of Contents
-- [Overview](#-overview)
-- [Why This Matters for Security](#-why-this-matters-for-security)
-- [Installation & Usage](#-installation--usage)
-- [How it Works Under the Hood](#-how-it-works-under-the-hood)
-- [Future Roadmap](#-future-roadmap)
-- [Contributing](#-contributing)
-- [License](#-license)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-blue.svg)](#)
+[![Language: Bash](https://img.shields.io/badge/language-Bash-2ea44f.svg)](#)
 
----
+## Why This Repo Exists
 
-## �🔍 Overview
+I am relearning Linux fundamentals in public so I can reason about systems at the level where cybersecurity actually happens:
 
-The **Process Inspector** is a minimalist Bash script designed to look under the hood of any running Linux process. Instead of just relying on dashboards like `ps`, `top`, or `htop`, this tool directly queries the kernel's virtual `/proc` filesystem to expose the raw reality of how processes interact with the system.
+- files and directories
+- paths and permissions
+- processes and file descriptors
+- terminals, pipes, and sockets
+- how the kernel exposes all of that through `/proc`
 
-It walks the `/proc/[PID]/` directory and reveals:
-- **Command Line:** The exact command and arguments used to start the process.
-- **Current Working Directory (CWD):** The directory from which the process was launched.
-- **Open File Descriptors (FDs):** A mapped list of every file, pipe, socket, and terminal the process is talking to (e.g., mapping FD `0`, `1`, `2` to `/dev/pts/*`).
+If I cannot clearly explain how a shell, a terminal, a pipe, or a process is wired under the hood, I cannot investigate suspicious behavior with confidence. This project is the first practical step in that direction.
 
-This project is built for **cybersecurity enthusiasts, system administrators, and developers** who want to go beyond superficial command usage and build a deep mental model of the Linux OS layer.
+## Current Scope
 
----
+The current version is deliberately limited to the concepts I have already worked through:
 
-## �️ Why This Matters for Security
+1. Inspect one PID at a time.
+2. Read directly from `/proc` instead of relying on higher-level wrappers.
+3. Show the command, cwd, and open FDs in a format that is readable to beginners.
+4. Classify FD targets so the output teaches something, not just dumps symlink targets.
 
-*"I could use Linux. But I couldn't defend or break it with confidence."*
+Current FD classifications:
 
-If you want to build systems that survive real-world attacks—or if you want to find vulnerabilities in them—you cannot afford a shallow understanding of the OS they run on. 
+- `terminal`
+- `file`
+- `pipe`
+- `socket`
+- `device`
+- `anon_inode`
+- `other`
+- `unknown`
 
-Understanding how the kernel exposes information via `/proc` helps bridge the gap between basic usage and true systems comprehension:
+## Why It Matters for Cybersecurity
 
-1. **Processes as Open Files:** A process isn't just a running program; it's a PID attached to memory, parent processes, and numbered handles (File Descriptors) pointing to actual system resources.
-2. **Symlinks as the Explanation Layer:** Seeing `FD 0 -> /dev/pts/1` in `/proc/<pid>/fd/` shows you exactly how standard input is wired to a physical or pseudo-terminal. This is the exact mechanism tools like `lsof` use under the hood.
-3. **Paths and Permissions:** Understanding absolute vs. relative paths makes or breaks path traversal bugs and security misconfigurations.
+Understanding `/proc` is useful because it turns abstract Linux ideas into evidence you can inspect:
 
-By inspecting these elements manually, you learn to reason about how malware hides, how rootkits lie, and how defenders can detect them. 
+- A process is not just "a running program". It has a PID, a parent, a state, a cwd, and a set of live handles to resources.
+- File descriptors are how a process talks to the world. `0`, `1`, and `2` are just the beginning.
+- `/dev/pts/*` explains where terminal input and output actually flow.
+- `pipe:[...]` and `socket:[...]` show when a process is connected to other processes or network activity.
+- Kernel-exposed metadata is the foundation for later work in incident response, malware analysis, runtime visibility, and defensive tooling.
 
----
+This repo is educational first, but the mental model behind it is directly relevant to real security work.
 
-## 🛠️ Installation & Usage
+## Example Output
 
-### Prerequisites
-- A Linux-based operating system.
-- `bash` installed.
-- Root (`sudo`) privileges are recommended when inspecting processes not owned by your user.
+Illustrative sample from inspecting a shell process:
 
-### 1. Clone the Repository
+```text
+============================================================
+ Process Inspector: /proc walk for PID 1299923
+============================================================
+Process Name       : bash
+PID                : 1299923
+PPID               : 1227398
+State              : S (sleeping)
+Command            : bash ./inspector.sh 1299923
+CWD                : /mnt/windows/transfer/Work/Cybersecurity/projects/process_inspector
+
+Open File Descriptors
+FD     TYPE         TARGET
+--     ----         ------
+0      terminal     /dev/pts/3
+1      terminal     /dev/pts/3
+2      terminal     /dev/pts/3
+255    file         /mnt/windows/transfer/Work/Cybersecurity/projects/process_inspector/inspector.sh
+
+Tip: sockets and pipes are shown as kernel-managed objects, while terminal and file entries resolve to real paths.
+```
+
+Full sample: [`examples/current-shell-output.txt`](./examples/current-shell-output.txt)
+
+## Getting Started
+
+### Requirements
+
+- Linux
+- `bash`
+- read access to `/proc/<pid>`
+- `sudo` if you want to inspect processes owned by another user
+
+### Clone
+
 ```bash
 git clone https://github.com/5h4d0wn1k/process_inspector.git
 cd process_inspector
 ```
 
-### 2. Run the Inspector
-Make sure the script is executable:
+### Run
+
 ```bash
 chmod +x inspector.sh
-```
-
-Execute it by passing a Process ID (PID):
-```bash
-# Inspect your current shell
 ./inspector.sh $$
-
-# Inspect a specific service (requires sudo if owned by another user)
-sudo ./inspector.sh $(pidof sshd | awk '{print $1}')
 ```
 
-### 🖥️ Example Output
+Inspect another process:
+
+```bash
+./inspector.sh 1
+sudo ./inspector.sh "$(pidof sshd | awk '{print $1}')"
+```
+
+Show help:
+
+```bash
+./inspector.sh --help
+```
+
+## How It Works
+
+The script reads the same kernel-backed files you can inspect manually:
+
+- `/proc/<pid>/status` for process name, state, and parent PID
+- `/proc/<pid>/cmdline` for the null-separated command line
+- `/proc/<pid>/cwd` for the current working directory symlink
+- `/proc/<pid>/fd/*` for open file descriptor symlinks
+
+That design keeps the project close to the Linux fundamentals it is meant to teach.
+
+## Repository Layout
 
 ```text
-==========================================
-      Process Inspector (PID: 1198623)
-==========================================
-Command              : /usr/bin/bash 
-CWD                  : /home/user/projects/process_inspector
-
---- Open File Descriptors ---
-  FD 0    -> /dev/pts/0
-  FD 1    -> /dev/pts/0
-  FD 2    -> /dev/pts/0
-  FD 36   -> anon_inode:inotify
-  FD 37   -> socket:[1270741]
-==========================================
+.
+├── CONTRIBUTING.md
+├── examples/
+│   └── current-shell-output.txt
+├── inspector.sh
+├── LICENSE
+├── README.md
+└── SECURITY.md
 ```
 
----
+## Development
 
-## ⚙️ How it Works Under the Hood
+The project is intentionally dependency-light.
 
-The script avoids complex dependencies. It relies entirely on `/proc`:
-*   `cmdline`: Reads `/proc/[PID]/cmdline`. To handle null-byte separators, it translates them to spaces.
-*   `cwd`: Executes `readlink /proc/[PID]/cwd`.
-*   `fd`: Loops through `/proc/[PID]/fd/*` and uses `readlink` to resolve exactly where each numbered descriptor points.
+Basic local checks:
 
----
+```bash
+bash -n inspector.sh
+./inspector.sh $$
+./inspector.sh 1
+```
 
-## 🌱 Future Roadmap
+If you have `shellcheck` installed, run:
 
-This tool represents the beginning of a deep-dive journey into Linux internals. Future planned features include:
-- [ ] Inspecting memory maps (`/proc/[PID]/maps`).
-- [ ] Dumping process environment variables securely (`/proc/[PID]/environ`).
-- [ ] Tracing live system calls.
-- [ ] Parent and child process tree visualizations.
+```bash
+shellcheck inspector.sh
+```
 
----
+## Project Status
 
-## 🤝 Contributing
+This is an early-stage educational cybersecurity repository.
 
-We welcome contributions from everyone, whether you are a Linux veteran or just starting to learn about the `/proc` filesystem!
+- Linux-only
+- Bash-only for now
+- focused on `/proc` and file-descriptor visibility
+- not intended to replace mature forensic or observability tools
+- designed to grow gradually as my Linux and cybersecurity understanding deepens
 
-Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
+## Roadmap
 
----
+Near-term ideas that still fit the learning path:
 
-## 📜 License
+- add executable path inspection from `/proc/<pid>/exe`
+- add optional environment inspection from `/proc/<pid>/environ`
+- add memory map inspection from `/proc/<pid>/maps`
+- add better socket context by correlating inode-backed sockets
+- add a mode to inspect multiple PIDs or walk all numeric `/proc` entries
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Contributing
 
+Contributions are welcome, especially if they keep the repo beginner-readable and aligned with the project's educational scope.
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+## License
+
+Released under the MIT License. See [`LICENSE`](./LICENSE).

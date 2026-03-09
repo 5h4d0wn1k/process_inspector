@@ -1,117 +1,232 @@
 #!/usr/bin/env bash
 
-# ==============================================================================
-#  ____                               ___                           _             
-# |  _ \ _ __ ___   ___ ___  ___ ___ |_ _|_ __  ___ _ __   ___  ___| |_ ___  _ __ 
-# | |_) | '__/ _ \ / __/ _ \/ __/ __| | || '_ \/ __| '_ \ / _ \/ __| __/ _ \| '__|
-# |  __/| | | (_) | (_|  __/\__ \__ \ | || | | \__ \ |_) |  __/ (__| || (_) | |   
-# |_|   |_|  \___/ \___\___||___/___/|___|_| |_|___/ .__/ \___|\___|\__\___/|_|   
-#                                                  |_|                            
-#                                                                           
-# A lightweight, educational tool to demystify Linux processes, the /proc 
-# filesystem, and exactly how everything maps to File Descriptors under the hood.
-# 
-# Author   : Process Inspector Contributors
-# License  : MIT
-# Version  : 1.0.0
-# GitHub   : https://github.com/5h4d0wn1k/process_inspector
-# ==============================================================================
+# Lightweight /proc inspector for the first public version of the project.
+# Scope is intentionally small: process identity, command, cwd, and open FDs.
 
-# --- ANSI Colors ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+set -u
 
-# --- Functions ---
+if [[ -t 1 ]]; then
+    RED=$'\033[0;31m'
+    GREEN=$'\033[0;32m'
+    YELLOW=$'\033[0;33m'
+    CYAN=$'\033[0;36m'
+    BOLD=$'\033[1m'
+    NC=$'\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    BOLD=''
+    NC=''
+fi
+
+print_usage() {
+    cat <<'EOF'
+Usage:
+  ./inspector.sh <pid>
+  ./inspector.sh --help
+
+Description:
+  Inspect a Linux process by reading /proc/<pid> directly.
+  The script prints:
+  - process name, PID, PPID, and state
+  - command line
+  - current working directory
+  - open file descriptors and their target types
+
+Examples:
+  ./inspector.sh $$
+  ./inspector.sh 1
+EOF
+}
 
 print_header() {
-    echo -e "${BOLD}${CYAN}==========================================${NC}"
-    echo -e "${BOLD}${CYAN}      Process Inspector (PID: $1)${NC}"
-    echo -e "${BOLD}${CYAN}==========================================${NC}"
+    printf "%b\n" "${BOLD}${CYAN}============================================================${NC}"
+    printf "%b\n" "${BOLD}${CYAN} Process Inspector: /proc walk for PID $1${NC}"
+    printf "%b\n" "${BOLD}${CYAN}============================================================${NC}"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR] $1${NC}" >&2
+    printf "%b\n" "${RED}[ERROR] $1${NC}" >&2
 }
 
 print_info() {
-    printf "${BOLD}%-20s${NC} : %b\n" "$1" "$2"
+    printf "%b%-18s%b : %s\n" "${BOLD}" "$1" "${NC}" "$2"
 }
 
-# --- Main Logic ---
+read_status_field() {
+    local key="$1"
+    local status_file="$2"
 
-# Check if a PID was provided
-if [ -z "$1" ]; then
-    print_error "Usage: $0 <PID>"
-    exit 1
-fi
+    awk -F ':' -v key="$key" '
+        $1 == key {
+            sub(/^[[:space:]]+/, "", $2)
+            print $2
+            exit
+        }
+    ' "$status_file" 2>/dev/null
+}
 
-PID="$1"
-PROC_DIR="/proc/$PID"
+read_cmdline() {
+    local proc_dir="$1"
+    local cmdline=''
+    local comm=''
 
-# Check if the process exists
-if [ ! -d "$PROC_DIR" ]; then
-    print_error "Process with PID $PID does not exist. (Or you lack permissions to view its /proc directory)."
-    exit 1
-fi
-
-print_header "$PID"
-
-# 1. Command Line (/proc/[pid]/cmdline is null-separated)
-if [ -f "$PROC_DIR/cmdline" ]; then
-    # Use tr to replace null bytes with spaces for readability
-    CMD_LINE=$(tr '\0' ' ' < "$PROC_DIR/cmdline")
-    
-    # If it's a kernel thread, cmdline might be empty, try stat or comm
-    if [ -z "$CMD_LINE" ]; then
-        if [ -f "$PROC_DIR/comm" ]; then
-             CMD_LINE="[$(cat "$PROC_DIR/comm")] (Kernel Thread / No cmdline)"
-        fi
+    if [[ -r "$proc_dir/cmdline" ]]; then
+        cmdline=$(tr '\0' ' ' < "$proc_dir/cmdline")
+        cmdline="${cmdline%" "}"
     fi
-    print_info "Command" "${GREEN}$CMD_LINE${NC}"
-else
-    print_info "Command" "${RED}N/A${NC}"
-fi
 
-# 2. Current Working Directory (/proc/[pid]/cwd is a symlink)
-if [ -L "$PROC_DIR/cwd" ]; then
-    CWD=$(readlink "$PROC_DIR/cwd")
-    print_info "CWD" "${YELLOW}$CWD${NC}"
-else
-    # Might lack permission to readlink, or process is a zombie
-    if [ -r "$PROC_DIR/cwd" ]; then
-         print_info "CWD" "${RED}Cannot resolve link (Permission denied?)${NC}"
-    else
-         print_info "CWD" "${RED}Permission denied to read cwd${NC}"
+    if [[ -n "$cmdline" ]]; then
+        printf "%s\n" "$cmdline"
+        return
     fi
-fi
 
-# 3. Open File Descriptors (symlinks inside /proc/[pid]/fd/)
-echo -e "\n${BOLD}${CYAN}--- Open File Descriptors ---${NC}"
-
-if [ -d "$PROC_DIR/fd" ] && [ -r "$PROC_DIR/fd" ]; then
-    # List all FDs and resolve where they point
-    # We use subshell and loop to handle potential permission issues on individual fds gracefully
-    
-    # Check if directory is empty
-    if [ -z "$(ls -A "$PROC_DIR/fd" 2>/dev/null)" ]; then
-        echo "No open file descriptors found or permission denied."
-    else
-        # We want to sort them numerically
-        for fd_path in $(ls -v "$PROC_DIR/fd/"); do
-            target=$(readlink "$PROC_DIR/fd/$fd_path" 2>/dev/null)
-            if [ -z "$target" ]; then
-                # Handle cases where readlink fails (e.g., permission denied on the symlink)
-                target="${RED}(Permission Denied or Broken Link)${NC}"
-            fi
-            printf "  FD %-4s -> %b\n" "$fd_path" "$target"
-        done
+    if [[ -r "$proc_dir/comm" ]]; then
+        IFS= read -r comm < "$proc_dir/comm"
+        printf "[%s] (no argv exposed in cmdline)\n" "$comm"
+        return
     fi
-else
-    print_error "Cannot read $PROC_DIR/fd. Permission denied. (Try running with sudo)"
-fi
 
-echo -e "${BOLD}${CYAN}==========================================${NC}"
+    printf "Unavailable\n"
+}
+
+read_link_or_reason() {
+    local path="$1"
+    local target=''
+
+    if target=$(readlink "$path" 2>/dev/null); then
+        printf "%s\n" "$target"
+        return
+    fi
+
+    if [[ -e "$path" || -L "$path" ]]; then
+        printf "unavailable (permission denied or process changed state)\n"
+        return
+    fi
+
+    printf "unavailable (fd disappeared while inspecting)\n"
+}
+
+classify_fd_target() {
+    local target="$1"
+
+    case "$target" in
+        /dev/pts/*|/dev/tty*|/dev/console)
+            printf "terminal\n"
+            ;;
+        socket:\[*\])
+            printf "socket\n"
+            ;;
+        pipe:\[*\])
+            printf "pipe\n"
+            ;;
+        anon_inode:*)
+            printf "anon_inode\n"
+            ;;
+        /dev/*)
+            printf "device\n"
+            ;;
+        /*)
+            printf "file\n"
+            ;;
+        unavailable*)
+            printf "unknown\n"
+            ;;
+        *)
+            printf "other\n"
+            ;;
+    esac
+}
+
+print_fd_table() {
+    local proc_dir="$1"
+    local -a fd_numbers=()
+    local fd_number=''
+    local fd_path=''
+    local target=''
+    local fd_type=''
+
+    printf "\n%b\n" "${BOLD}${CYAN}Open File Descriptors${NC}"
+    printf "%-6s %-12s %s\n" "FD" "TYPE" "TARGET"
+    printf "%-6s %-12s %s\n" "--" "----" "------"
+
+    if [[ ! -d "$proc_dir/fd" ]]; then
+        printf "%s\n" "N/A    unknown      /proc/<pid>/fd is not available"
+        return
+    fi
+
+    mapfile -t fd_numbers < <(find "$proc_dir/fd" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort -n)
+
+    if [[ ${#fd_numbers[@]} -eq 0 ]]; then
+        printf "%s\n" "N/A    unknown      no readable file descriptors (permission denied or none open)"
+        return
+    fi
+
+    for fd_number in "${fd_numbers[@]}"; do
+        fd_path="$proc_dir/fd/$fd_number"
+        target=$(read_link_or_reason "$fd_path")
+        fd_type=$(classify_fd_target "$target")
+        printf "%-6s %-12s %s\n" "$fd_number" "$fd_type" "$target"
+    done
+}
+
+main() {
+    local pid="${1:-}"
+    local proc_dir=''
+    local name='Unavailable'
+    local ppid='Unavailable'
+    local state='Unavailable'
+    local cmdline='Unavailable'
+    local cwd='Unavailable'
+
+    case "$pid" in
+        "" )
+            print_usage
+            exit 1
+            ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+    esac
+
+    if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+        print_error "PID must be a numeric value."
+        exit 1
+    fi
+
+    proc_dir="/proc/$pid"
+
+    if [[ ! -d "$proc_dir" ]]; then
+        print_error "Process $pid does not exist, or /proc/$pid is not visible from this context."
+        exit 1
+    fi
+
+    if [[ -r "$proc_dir/status" ]]; then
+        name=$(read_status_field "Name" "$proc_dir/status")
+        ppid=$(read_status_field "PPid" "$proc_dir/status")
+        state=$(read_status_field "State" "$proc_dir/status")
+    fi
+
+    cmdline=$(read_cmdline "$proc_dir")
+
+    if [[ -L "$proc_dir/cwd" || -e "$proc_dir/cwd" ]]; then
+        cwd=$(read_link_or_reason "$proc_dir/cwd")
+    fi
+
+    print_header "$pid"
+    print_info "Process Name" "${GREEN}${name:-Unavailable}${NC}"
+    print_info "PID" "${GREEN}$pid${NC}"
+    print_info "PPID" "${GREEN}${ppid:-Unavailable}${NC}"
+    print_info "State" "${GREEN}${state:-Unavailable}${NC}"
+    print_info "Command" "${YELLOW}$cmdline${NC}"
+    print_info "CWD" "${YELLOW}$cwd${NC}"
+
+    print_fd_table "$proc_dir"
+
+    printf "\n%b\n" "${BOLD}${CYAN}Tip:${NC} sockets and pipes are shown as kernel-managed objects, while terminal and file entries resolve to real paths."
+}
+
+main "$@"

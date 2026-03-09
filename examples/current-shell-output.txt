@@ -1,0 +1,19 @@
+============================================================
+ Process Inspector: /proc walk for PID 1299923
+============================================================
+Process Name       : bash
+PID                : 1299923
+PPID               : 1227398
+State              : S (sleeping)
+Command            : bash ./inspector.sh 1299923
+CWD                : /mnt/windows/transfer/Work/Cybersecurity/projects/process_inspector
+
+Open File Descriptors
+FD     TYPE         TARGET
+--     ----         ------
+0      terminal     /dev/pts/3
+1      terminal     /dev/pts/3
+2      terminal     /dev/pts/3
+255    file         /mnt/windows/transfer/Work/Cybersecurity/projects/process_inspector/inspector.sh
+
+Tip: sockets and pipes are shown as kernel-managed objects, while terminal and file entries resolve to real paths.
